@@ -74,6 +74,14 @@ module Omnibus
                   desc: "Populate the S3 cache.",
                   type: :boolean,
                   default: false
+    method_option :print_dependency_graph,
+                  desc: "Print the dependency graph in the Omnibus standard output.",
+                  type: :boolean,
+                  default: true
+    method_option :save_dependency_graph,
+                  desc: "Create a json file representation of the build's dependency graph at the end of the build.",
+                  type: :boolean,
+                  default: true
     desc "build PROJECT", "Build the given Omnibus project"
     def build(name)
       manifest = if @options[:use_manifest]
@@ -85,6 +93,8 @@ module Omnibus
       project = Project.load(name, manifest)
       say("Building #{project.name} #{project.build_version}...")
       Omnibus::S3Cache.populate if @options[:populate_s3_cache] && !Omnibus::S3Cache.fetch_missing.empty?
+      # Compute the dependency graph of this build
+      deps = project.deps_graph print: @options[:print_dependency_graph]
       project.download
       project.build
 
@@ -93,6 +103,33 @@ module Omnibus
         File.open(::File.join("pkg", "version-manifest.json"), "w") do |f|
           f.write(FFI_Yajl::Encoder.encode(project.built_manifest.to_hash))
         end
+      end
+      if @options[:save_dependency_graph]
+        save_dependency_graph(project, Config.package_dir, deps)
+      end
+    end
+
+    #
+    # Compute the dependency graph of a project.
+    #
+    #   $ omnibus graph chefdk
+    #
+    method_option :print_dependency_graph,
+                  desc: "Print the dependency graph in the Omnibus standard output.",
+                  type: :boolean,
+                  default: true
+    method_option :save_dependency_graph,
+                  desc: "Create a json file representation of the build's dependency graph.",
+                  type: :boolean,
+                  default: true
+    desc "graph PROJECT", "Compute the dependency graph of a project."
+    def graph(name)
+      project = Project.load(name, nil)
+      say("Loading dependency graph of project #{project.name} #{project.build_version}...")
+      deps = project.deps_graph print: @options[:print_dependency_graph]
+
+      if @options[:save_dependency_graph]
+        save_dependency_graph(project, Config.package_dir, deps)
       end
     end
 
@@ -186,6 +223,17 @@ module Omnibus
     desc "version", "Display version information", hide: true
     def version
       say("Omnibus v#{Omnibus::VERSION}")
+    end
+
+    private
+
+    def save_dependency_graph(project, target_dir, deps_graph)
+      FileUtils.mkdir_p(target_dir)
+      target_path = ::File.join(target_dir, "dependency-graph-#{project.name}-#{project.build_version}.json")
+      File.open(target_path, "w") do |f|
+        f.write(FFI_Yajl::Encoder.encode(deps_graph, pretty: true))
+      end
+      say("Saved dependency graph of project #{project.name} #{project.build_version} at #{target_path}")
     end
   end
 end

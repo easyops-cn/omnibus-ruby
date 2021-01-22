@@ -1345,6 +1345,89 @@ module Omnibus
       compress_me
     end
 
+    def deps_graph(print = false)
+      deps_graph = Hash.new()
+      output = ""
+
+      # Fill project metadata
+      deps_graph["project"] = {
+        name: name,
+        version: build_version
+      }
+      output += "Project #{name}\n"
+
+      # Initialize dependency software array
+      deps_graph["software"] = []
+
+      softwares.each do |software|
+        # Initialize software metadata hash
+        software_hash = {
+          name: software.name,
+          version: software.version
+        }
+        output += "--> Software #{software.name}\n"
+        output += "    Version: #{software.version}\n"
+
+        # Get metadata about the source used
+        if software.source.is_a?(Hash)
+          if software.source.key?(:git)
+            # The source is a git repo
+            software_hash[:source] = {
+              git: software.source[:git]
+            }
+            output += "    Source (git): #{software.source[:git]}\n"
+          elsif software.source.key?(:path)
+            # The source is a local hash
+            software_hash[:source] = {
+              path: software.source[:path]
+            }
+            output += "    Source (path): #{software.source[:path]}\n"
+          elsif software.source.key?(:url)
+            # The source is a remote URL. A hashsum can also be specified,
+            # it will be verified when the source is downloaded.
+            software_hash[:source] = {
+              url: software.source[:url]
+            }
+            output += "    Source (url): #{software.source[:url]}\n"
+
+            if software.source.key?(:sha512)
+              software_hash[:source][:sha512] = software.source[:sha512]
+              output += "    Hash (sha512): #{software.source[:sha512]}\n"
+            end
+            if software.source.key?(:sha256)
+              software_hash[:source][:sha256] = software.source[:sha256]
+              output += "    Hash (sha256): #{software.source[:sha256]}\n"
+            end
+            if software.source.key?(:sha1)
+              software_hash[:source][:sha1] = software.source[:sha1]
+              output += "    Hash (sha1): #{software.source[:sha1]}\n"
+            end
+            if software.source.key?(:md5)
+              software_hash[:source][:md5] = software.source[:md5]
+              output += "    Hash (md5): #{software.source[:md5]}\n"
+            end
+          end
+        end
+        # List all dependencies of the software
+        # Note: software.dependencies is an array of strings, not an array of actual Software objects.
+        if software.dependencies.length > 0
+          software_hash[:needs] = []
+          output += "    Needs:\n"
+          software.dependencies.each do |dep|
+            software_hash[:needs] << dep
+            output += "        #{dep}\n"
+          end
+        end
+        deps_graph["software"] << software_hash
+      end
+
+      if print
+        log.info(log_key) { output }
+      end
+
+      deps_graph
+    end
+
     def write_json_manifest
       File.open(json_manifest_path, "w") do |f|
         f.write(FFI_Yajl::Encoder.encode(built_manifest.to_hash, pretty: true))
