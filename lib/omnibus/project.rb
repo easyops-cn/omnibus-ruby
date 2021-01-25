@@ -1383,29 +1383,30 @@ module Omnibus
             }
             output += "    Source (path): #{software.source[:path]}\n"
           elsif software.source.key?(:url)
-            # The source is a remote URL. A hashsum can also be specified,
-            # it will be verified when the source is downloaded.
+            # The source is a remote URL.
             software_hash[:source] = {
               url: software.source[:url]
             }
             output += "    Source (url): #{software.source[:url]}\n"
+          end
 
-            if software.source.key?(:sha512)
-              software_hash[:source][:sha512] = software.source[:sha512]
-              output += "    Hash (sha512): #{software.source[:sha512]}\n"
-            end
-            if software.source.key?(:sha256)
-              software_hash[:source][:sha256] = software.source[:sha256]
-              output += "    Hash (sha256): #{software.source[:sha256]}\n"
-            end
-            if software.source.key?(:sha1)
-              software_hash[:source][:sha1] = software.source[:sha1]
-              output += "    Hash (sha1): #{software.source[:sha1]}\n"
-            end
-            if software.source.key?(:md5)
-              software_hash[:source][:md5] = software.source[:md5]
-              output += "    Hash (md5): #{software.source[:md5]}\n"
-            end
+          # A hashsum can also be specified.
+          # It will be verified when the source is downloaded.
+          if software.source.key?(:sha512)
+            software_hash[:source][:sha512] = software.source[:sha512]
+            output += "    Hash (sha512): #{software.source[:sha512]}\n"
+          end
+          if software.source.key?(:sha256)
+            software_hash[:source][:sha256] = software.source[:sha256]
+            output += "    Hash (sha256): #{software.source[:sha256]}\n"
+          end
+          if software.source.key?(:sha1)
+            software_hash[:source][:sha1] = software.source[:sha1]
+            output += "    Hash (sha1): #{software.source[:sha1]}\n"
+          end
+          if software.source.key?(:md5)
+            software_hash[:source][:md5] = software.source[:md5]
+            output += "    Hash (md5): #{software.source[:md5]}\n"
           end
         end
         # List all dependencies of the software
@@ -1425,6 +1426,24 @@ module Omnibus
         log.info(log_key) { output }
       end
 
+      # Structure of the hash:
+      # {
+      #   "project": {
+      #     "name": "...",
+      #     "version": "..."
+      #   },
+      #   "software": [
+      #     {
+      #       "name": "...",
+      #       "version": "...",
+      #       "source": {
+      #         "url": "...",
+      #         "sha256": "..."
+      #       }
+      #     },
+      #     ...
+      #   ]
+      # }
       deps_graph
     end
 
