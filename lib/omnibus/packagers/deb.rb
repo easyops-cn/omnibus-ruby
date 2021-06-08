@@ -126,6 +126,27 @@ module Omnibus
     expose :gpg_key_name
 
     #
+    # Add a package that is a recommended dependency of this project.
+    #
+    # @example
+    #   recommends 'gnupg'
+    #
+    # @param [String] val
+    #   the name of the recommended dependency
+    #
+    # @return [Array<String>]
+    #   the list of all current recommended dependencies
+    #
+    def recommends(val = NULL)
+      if null?(val)
+        recommended_dependencies
+      else
+        recommended_dependencies << val
+      end
+    end
+    expose :recommends
+
+    #
     # Set or return the signing passphrase. If this value is provided,
     # Omnibus will attempt to sign the DEB.
     #
@@ -283,6 +304,15 @@ module Omnibus
     end
 
     #
+    # The list of recommended dependencies for this package.
+    #
+    # @return [Array<String>]
+    #
+    def recommended_dependencies
+      @recommended_dependencies ||= []
+    end
+
+    #
     # The path where Debian-specific files will live.
     #
     # @example
@@ -338,6 +368,7 @@ module Omnibus
                         conflicts: project.conflicts,
                         replaces: project.replaces,
                         dependencies: pkg_dependencies,
+                        recommended_dependencies: recommended_dependencies,
                       })
     end
 
