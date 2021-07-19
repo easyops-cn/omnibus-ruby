@@ -694,6 +694,24 @@ module Omnibus
     end
     expose :runtime_dependency
 
+    #
+    # Add a package that is a recommended runtime dependency of this project.
+    #
+    # @example
+    #   runtime_recommended_dependency 'foo'
+    #
+    # @param [String] val
+    #   the name of the recommended runtime dependency
+    #
+    # @return [Array<String>]
+    #   the list of recommended runtime dependencies
+    #
+    def runtime_recommended_dependency(val)
+      runtime_recommended_dependencies << val
+      runtime_recommended_dependencies.dup
+    end
+    expose :runtime_recommended_dependency
+
     # Add package(s) that this project extends.
     #
     # Use this to avoid packaging many files and libraries already included by
@@ -779,6 +797,24 @@ module Omnibus
       extra_package_files.dup
     end
     expose :extra_package_file
+
+    #
+    # Add one file in Windows build whose symbol need to be stripped
+    #
+    # @example
+    #   windows_symbol_stripping_file "C:\\omnibus-ruby\\datadog-agent\\src\\github.com\\DataDog\\datadog-agent\\bin\\agent\\security-agent.exe"
+    #
+    # @param [String] val
+    #   the name of the file in Windows build to be stripped
+    #
+    # @return [Array<String>]
+    #   the list of files to be stripped
+    #
+    def windows_symbol_stripping_file(val)
+      windows_symbol_stripping_files << val
+      windows_symbol_stripping_files.dup
+    end
+    expose :windows_symbol_stripping_file
 
     #
     # A proxy method to the underlying Ohai system.
@@ -915,6 +951,52 @@ module Omnibus
     expose :text_manifest_path
 
     #
+    # [MacOS only]
+    # Set or return the code signing identity. Can be used in software definitions
+    # to sign components of the package.
+    #
+    # @example
+    #   code_signing_identity "foo"
+    #
+    # @param [String] val
+    #   the identity to use when code signing
+    #
+    # @return [String]
+    #   the code-signing identity
+    #
+    def code_signing_identity(val = NULL)
+      if null?(val)
+        @code_signing_identity
+      else
+        @code_signing_identity = val
+      end
+    end
+    expose :code_signing_identity
+
+    #
+    # [MacOS only]
+    # Set or return the location of the Entitlements file. Can be used
+    # in software definitions to specify entitlements when signing files.
+    #
+    # @example
+    #   entitlements_file "foo"
+    #
+    # @param [String] val
+    #   the location of the Entitlements file
+    #
+    # @return [String]
+    #   the location of the Entitlements file
+    #
+    def entitlements_file(val = NULL)
+      if null?(val)
+        @entitlements_file
+      else
+        @entitlements_file = val
+      end
+    end
+    expose :entitlements_file
+
+    #
     # @!endgroup
     # --------------------------------------------------
 
@@ -1027,6 +1109,15 @@ module Omnibus
     end
 
     #
+    # The list of files in Windows build whose symbol need to be stripped.
+    #
+    # @return [Array<String>]
+    #
+    def windows_symbol_stripping_files(val = NULL)
+      @windows_symbol_stripping_files ||= []
+    end
+
+    #
     # The list of software dependencies for this project.
     #
     # These is the software that is used at runtime for your project.
@@ -1035,6 +1126,15 @@ module Omnibus
     #
     def runtime_dependencies
       @runtime_dependencies ||= []
+    end
+
+    #
+    # The list of recommended software dependencies for this project.
+    #
+    # @return [Array<String>]
+    #
+    def runtime_recommended_dependencies
+      @runtime_recommended_dependencies ||= []
     end
 
     # The list of packages this project extends.
@@ -1173,6 +1273,7 @@ module Omnibus
     #
     def dirty!(software)
       raise ProjectAlreadyDirty.new(self) if culprit
+
       @culprit = software
     end
 
@@ -1300,9 +1401,6 @@ module Omnibus
       build
     end
 
-    #
-    #
-    #
     def package_me
       destination = File.expand_path("pkg", Config.project_root)
 
@@ -1317,6 +1415,10 @@ module Omnibus
           packager.evaluate(&block)
         end
 
+        if packager.skip_packager
+          log.info(log_key) { "Skipping #{packager.id} per project configuration." }
+          next
+        end
         # Run the actual packager
         packager.run!
 
@@ -1324,12 +1426,15 @@ module Omnibus
         package_path = File.join(Config.package_dir, packager.package_name)
         FileUtils.cp(package_path, destination, preserve: true)
         FileUtils.cp("#{package_path}.metadata.json", destination, preserve: true)
+
+        # If we also generate a debug package, copy it back into the workspace
+        if packager.debug_build?
+          debug_package_path = File.join(Config.package_dir, packager.package_name(true))
+          FileUtils.cp(debug_package_path, destination, preserve: true)
+        end
       end
     end
 
-    #
-    #
-    #
     def compress_me
       destination = File.expand_path("pkg", Config.project_root)
 

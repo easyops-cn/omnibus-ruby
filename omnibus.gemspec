@@ -1,4 +1,5 @@
 # -*- encoding: utf-8 -*-
+
 lib = File.expand_path("../lib", __FILE__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require "omnibus/version"
@@ -31,12 +32,12 @@ Gem::Specification.new do |gem|
   gem.add_dependency "ruby-progressbar", "~> 1.7"
   gem.add_dependency "aws-sdk",          "~> 2.11.8"
   gem.add_dependency "thor",             "~> 0.18"
-  gem.add_dependency "ffi-yajl",         "~> 2.2"
+  gem.add_dependency "ffi-yajl",         "~> 2.3.4"
   gem.add_dependency "license_scout",    "~> 1.0"
 
   gem.add_dependency 'httparty'
   # Pin ffi (dep of ohai) to a version that can be compiled with older autoconfs
-  gem.add_dependency "ffi",              "1.9.18"
+  gem.add_dependency "ffi",              "= 1.9.18"
 
   gem.add_development_dependency "bundler"
   gem.add_development_dependency "artifactory", "~> 2.0"
@@ -50,4 +51,5 @@ Gem::Specification.new do |gem|
   gem.add_development_dependency "rake"
   gem.add_development_dependency "appbundler"
   gem.add_development_dependency "pry"
+  gem.add_development_dependency "rubocop", "~> 0.75.1"
 end

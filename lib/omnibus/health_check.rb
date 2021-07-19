@@ -1,4 +1,3 @@
-
 # Copyright 2012-2014 Chef Software, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +31,9 @@ module Omnibus
       /ld-linux/,
       /libc\.so/,
       /libcrypt\.so/,
+      /libdb-4.5\.so/,
       /libdb-4.7\.so/,
+      /libdb-5.3\.so/,
       /libdl/,
       /libfreebl\d\.so/,
       /libgcc_s\.so/,
@@ -427,7 +428,7 @@ module Omnibus
           # This can be done more smartly but O(n^2) is just fine for n = small
           conflict_map.each do |candidate_name, details|
             unless details[:base] >= base + size ||
-                details[:base] + details[:size] <= base
+                   details[:base] + details[:size] <= base
               details[:conflicts] << lib_name
               conflicts << candidate_name
             end
@@ -439,7 +440,7 @@ module Omnibus
             conflicts: conflicts,
           }
 
-          log.debug(log_key) { "Discovered #{lib_name} at #{hex} + #{hex}" % [ base, size ] }
+          log.debug(log_key) { "Discovered #{lib_name} at #{hex} + #{hex}" % [base, size] }
         end
       end
 

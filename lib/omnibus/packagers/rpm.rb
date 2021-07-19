@@ -21,18 +21,18 @@ module Omnibus
     # @return [Hash]
     SCRIPT_MAP = {
       # Default Omnibus naming
-      preinst:  "pre",
+      preinst: "pre",
       postinst: "post",
-      prerm:    "preun",
-      postrm:   "postun",
+      prerm: "preun",
+      postrm: "postun",
       # Default RPM naming
-      pre:          "pre",
-      post:         "post",
-      preun:        "preun",
-      postun:       "postun",
+      pre: "pre",
+      post: "post",
+      preun: "preun",
+      postun: "postun",
       verifyscript: "verifyscript",
-      pretans:      "pretans",
-      posttrans:    "posttrans",
+      pretans: "pretans",
+      posttrans: "posttrans",
     }.freeze
 
     id :rpm
@@ -75,7 +75,7 @@ module Omnibus
       #
       # extra_package_file '/path/to/foo.txt' #=> /tmp/BUILD/path/to/foo.txt
       project.extra_package_files.each do |file|
-        parent      = File.dirname(file)
+        parent = File.dirname(file)
 
         if File.directory?(file)
           destination = File.join(build_dir, file)
@@ -90,18 +90,28 @@ module Omnibus
     end
 
     build do
+      # NOTE: for now we assume having RPM >= 4.14 equals building
+      # a FIPS-installable RPM - this might not always be the case,
+      # so we might need to change this in the future.
+      rv = rpm_version
+      if rv[:major] != "4"
+        raise Error.new("Only works with RPM 4")
+      end
+
+      fips = rv[:minor].to_i >= 14 ? true : false
+
       # Generate the spec
-      write_rpm_spec
+      write_rpm_spec(fips)
 
       # Generate the rpm
-      create_rpm_file
+      create_rpm_file(fips)
 
       if debug_build?
         # Generate the spec
-        write_rpm_spec(true)
+        write_rpm_spec(fips, true)
 
         # Generate the rpm
-        create_rpm_file(true)
+        create_rpm_file(fips, true)
       end
     end
 
@@ -110,8 +120,30 @@ module Omnibus
     # --------------------------------------------------
 
     #
-    # Set or return the signing passphrase. If this value is provided,
-    # Omnibus will attempt to sign the RPM.
+    # Set or return the the gpg key name to use while signing.
+    # If this value is provided, Omnibus will attempt to sign the RPM.
+    #
+    # @example
+    #   gpg_key_name 'My key <my.address@here.com>'
+    #
+    # @param [String] val
+    #   the name of the GPG key to use during RPM signing
+    #
+    # @return [String]
+    #   the RPM signing GPG key name
+    #
+    def gpg_key_name(val = NULL)
+      if null?(val)
+        @gpg_key_name
+      else
+        @gpg_key_name = val
+      end
+    end
+    expose :gpg_key_name
+
+    #
+    # Set or return the signing passphrase.
+    # If this value is provided, Omnibus will attempt to sign the RPM.
     #
     # @example
     #   signing_passphrase "foo"
@@ -349,20 +381,34 @@ module Omnibus
     end
 
     #
+    # Return version of local `rpm`
+    #
+    # @return [MatchData]
+    #
+    def rpm_version
+      version_call = shellout!("rpm --version")
+      match = version_call.stdout.match(/RPM version (?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d.*)/)
+      if match.nil?
+        raise Error.new("Couldn't parse '#{version_call.stdout}' as RPM version")
+      end
+
+      return match
+    end
+
+    #
     # Render an rpm spec file in +SPECS/#{name}.spec+ using the supplied ERB
     # template.
     #
     # @return [void]
     #
-    def write_rpm_spec(debug = false)
-
+    def write_rpm_spec(fips, debug = false)
       # Create a map of scripts that exist and their contents
       scripts = SCRIPT_MAP.inject({}) do |hash, (source, destination)|
         script_src = source.to_s
         if debug
           script_src = "#{source.to_s}-dbg"
         end
-        path =  File.join(project.package_scripts_path, script_src)
+        path = File.join(project.package_scripts_path, script_src)
 
         if File.file?(path)
           hash[destination] = File.read(path)
@@ -378,38 +424,38 @@ module Omnibus
 
       # Get a list of all files
       files = FileSyncer.glob("#{build_dir(debug)}/**/*")
-                .map    { |path| build_filepath(path, debug) }
-                .reject { |path| path.empty? }
+                        .map    { |path| build_filepath(path, debug) }
+                        .reject { |path| path.empty? }
 
       log.debug(log_key) { "These are the files going into the package(#{safe_base_package_name(debug)}): #{files}" }
 
       render_template(resource_path("spec.erb"),
-        destination: spec_file(debug),
-        variables: {
-          name:            safe_base_package_name(debug),
-          version:         safe_version,
-          epoch:           safe_epoch,
-          iteration:       safe_build_iteration,
-          vendor:          vendor,
-          license:         license,
-          dist_tag:        dist_tag,
-          maintainer:      project.maintainer,
-          homepage:        project.homepage,
-          description:     project.description,
-          priority:        priority,
-          category:        category,
-          conflicts:       project.conflicts,
-          replaces:        project.replaces,
-          dependencies:    pkg_dependencies,
-          user:            project.package_user,
-          group:           project.package_group,
-          scripts:         scripts,
-          config_files:    config_files,
-          files:           files,
-          build_dir:       build_dir(debug),
-          platform_family: Ohai["platform_family"],
-        }
-      )
+                      destination: spec_file(debug),
+                      variables: {
+                        name: safe_base_package_name(debug),
+                        version: safe_version,
+                        epoch: safe_epoch,
+                        iteration: safe_build_iteration,
+                        vendor: vendor,
+                        license: license,
+                        dist_tag: dist_tag,
+                        maintainer: project.maintainer,
+                        homepage: project.homepage,
+                        description: project.description,
+                        priority: priority,
+                        category: category,
+                        conflicts: project.conflicts,
+                        replaces: project.replaces,
+                        dependencies: pkg_dependencies,
+                        user: project.package_user,
+                        group: project.package_group,
+                        scripts: scripts,
+                        config_files: config_files,
+                        files: files,
+                        build_dir: build_dir(debug),
+                        platform_family: Ohai["platform_family"],
+                        fips: fips,
+                      })
     end
 
     #
@@ -419,7 +465,7 @@ module Omnibus
     #
     # @return [void]
     #
-    def create_rpm_file(debug = false)
+    def create_rpm_file(fips, debug = false)
       stage = staging_dir
       if debug
         stage = staging_dbg_dir
@@ -430,33 +476,67 @@ module Omnibus
       command << %{ --buildroot #{build_dir(debug)}}
       command << %{ --define '_topdir #{stage}'}
 
-      if signing_passphrase
+      if gpg_key_name || signing_passphrase
         log.info(log_key) { "Signing enabled for .rpm file" }
 
-        if File.exist?("#{ENV['HOME']}/.rpmmacros")
+        key_name = gpg_key_name || project.maintainer
+        log.info(log_key) { "Using gpg key #{key_name}" }
+
+        command << " #{spec_file(debug)}"
+
+        has_rpmmacros = File.exist?("#{ENV['HOME']}/.rpmmacros")
+        if has_rpmmacros
           log.info(log_key) { "Detected .rpmmacros file at `#{ENV['HOME']}'" }
           home = ENV["HOME"]
         else
           log.info(log_key) { "Using default .rpmmacros file from Omnibus" }
-
           # Generate a temporary home directory
           home = Dir.mktmpdir
-
-          render_template(resource_path("rpmmacros.erb"),
-            destination: "#{home}/.rpmmacros",
-            variables: {
-              gpg_name: project.maintainer,
-              gpg_path: "#{ENV['HOME']}/.gnupg", # TODO: Make this configurable
-            }
-          )
         end
 
-        command << " --sign"
-        command << " #{spec_file(debug)}"
+        if fips
+          with_rpm_passphrase do |passphrase_file|
+            if not has_rpmmacros
+              gpg_extra_args = ""
+              rpm_gpg = shellout!("rpm --eval '%__gpg'")
+              if shellout("#{rpm_gpg.stdout} --pinentry-mode loopback </dev/null 2>&1 | grep -q pinentry-mode").exitstatus == 1
+                gpg_extra_args << " --pinentry-mode loopback"
+              end
 
-        with_rpm_signing do |signing_script|
-          log.info(log_key) { "Creating .rpm file" }
-          shellout!("#{signing_script} \"#{command}\"", environment: { "HOME" => home })
+              render_template(resource_path("rpmmacros.erb"),
+                              destination: "#{home}/.rpmmacros",
+                              variables: {
+                                gpg_name: key_name,
+                                gpg_path: "#{ENV['HOME']}/.gnupg", # TODO: Make this configurable
+                                gpg_passphrase_file: passphrase_file,
+                                gpg_extra_args: gpg_extra_args,
+                                fips: true,
+                              })
+            end
+
+            log.info(log_key) { "Creating .rpm file" }
+            # We don't use `rpmbuild --sign` on newer RPM, as it is deprecated and also
+            # seems to fail for packages with a lot files, like datadog-agent, with CentOS 6
+            # version of `popt`
+            shellout!("#{command}", environment: { "HOME" => home })
+            shellout!("rpm --addsign #{stage}/RPMS/**/*.rpm", environment: { "HOME" => home })
+          end
+        else
+          command << " --sign"
+          if not has_rpmmacros
+            render_template(resource_path("rpmmacros.erb"),
+                            destination: "#{home}/.rpmmacros",
+                            variables: {
+                              gpg_name: key_name,
+                              gpg_path: "#{ENV['HOME']}/.gnupg", # TODO: Make this configurable
+                              fips: false,
+                            })
+          end
+
+          with_rpm_signing do |signing_script|
+            log.info(log_key) { "Creating .rpm file" }
+            shellout!("#{signing_script} \"#{command}\"", environment: { "HOME" => home })
+          end
         end
       else
         log.info(log_key) { "Creating .rpm file" }
@@ -467,7 +547,7 @@ module Omnibus
       FileSyncer.glob("#{stage}/RPMS/**/*.rpm").each do |rpm|
         # RPMbuild doesn't let use choose the final RPM name, it contains the epoch if the
         # corresponding DSL was set so... let's get rid from the RPM name here :/
-        copy_file(rpm, "#{Config.package_dir}/#{rpm.split('/')[-1].sub(/\d+:/, '')}" )
+        copy_file(rpm, "#{Config.package_dir}/#{rpm.split('/')[-1].sub(/\d+:/, '')}")
       end
     end
 
@@ -479,11 +559,13 @@ module Omnibus
     def build_filepath(path, debug = false)
       filepath = rpm_safe("/" + path.gsub("#{build_dir(debug)}/", ""))
       return if config_files.include?(filepath)
+
       full_path = build_dir(debug) + filepath.gsub("[%]", "%")
       # FileSyncer.glob quotes pathnames that contain spaces, which is a problem on el7
       full_path.delete!('"')
       # Mark directories with the %dir directive to prevent rpmbuild from counting their contents twice.
       return mark_filesystem_directories(filepath) if !File.symlink?(full_path) && File.directory?(full_path)
+
       filepath
     end
 
@@ -515,17 +597,39 @@ module Omnibus
       destination = "#{directory}/sign-rpm"
 
       render_template(resource_path("signing.erb"),
-        destination: destination,
-        mode: 0700,
-        variables: {
-          passphrase: signing_passphrase,
-        }
-      )
+                      destination: destination,
+                      mode: 0700,
+                      variables: {
+                        passphrase: signing_passphrase,
+                      })
 
       # Yield the destination to the block
       yield(destination)
     ensure
       remove_file(destination)
+      remove_directory(directory)
+    end
+
+    #
+    # Render a file with gpg key passphrase with secure permissions, call the given
+    # block with the path to the file, and ensure deletion of the file from
+    # disk since it contains sensitive information.
+    #
+    # @param [Proc] block
+    #   the block to call
+    #
+    # @return [String]
+    #
+    def with_rpm_passphrase(&block)
+      directory = Dir.mktmpdir
+      passphrase_file = "#{directory}/passphrase"
+      File.open(passphrase_file, 'w', 0600) do |file|
+        file.write(signing_passphrase)
+      end
+
+      yield(passphrase_file)
+    ensure
+      remove_file(passphrase_file)
       remove_directory(directory)
     end
 
@@ -544,10 +648,10 @@ module Omnibus
       string = "\"#{string}\"" if string[/\s/]
 
       string.dup
-        .gsub("[", "[\\[]")
-        .gsub("*", "[*]")
-        .gsub("?", "[?]")
-        .gsub("%", "[%]")
+            .gsub("[", "[\\[]")
+            .gsub("*", "[*]")
+            .gsub("?", "[?]")
+            .gsub("%", "[%]")
     end
 
     #
@@ -611,7 +715,7 @@ module Omnibus
       #
       if version =~ /\-/
         if Ohai["platform_family"] == "wrlinux"
-          converted = version.tr("-", "_") #WRL has an elderly RPM version
+          converted = version.tr("-", "_") # WRL has an elderly RPM version
           log.warn(log_key) do
             "Omnibus replaces dashes (-) with tildes (~) so pre-release " \
             "versions get sorted earlier than final versions.  However, the " \
@@ -658,6 +762,8 @@ module Omnibus
       case Ohai["kernel"]["machine"]
       when "i686"
         "i386"
+      when "armv7l" # raspberry pi 3 CentOS
+        "armv7hl"
       when "armv6l"
         if Ohai["platform"] == "pidora"
           "armv6hl"

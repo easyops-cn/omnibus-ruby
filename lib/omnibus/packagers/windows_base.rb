@@ -17,7 +17,8 @@
 module Omnibus
   class Packager::WindowsBase < Packager::Base
     DEFAULT_TIMESTAMP_SERVERS = ["http://timestamp.digicert.com",
-                                 "http://timestamp.verisign.com/scripts/timestamp.dll"]
+                                 "http://timestamp.verisign.com/scripts/timestamp.dll",
+                                 "http://timestamp.globalsign.com/scripts/timstamp.dll"]
 
     #
     # Set the signing certificate name
@@ -50,6 +51,7 @@ module Omnibus
         if signing_identity_file
           raise Error, "You cannot specify signing_identity and signing_identity_file"
         end
+
         @signing_identity = {}
         unless thumbprint.is_a?(String)
           raise InvalidValue.new(:signing_identity, "be a String")
@@ -106,6 +108,7 @@ module Omnibus
         if signing_identity
           raise Error, "You cannot specify signing_identity and signing_identity_file"
         end
+
         @signing_identity_file = {}
         unless pfxfile.is_a?(String)
           raise InvalidValue.new(:pfxfile, "be a String")
@@ -125,7 +128,7 @@ module Omnibus
                                    "Found invalid keys [#{invalid_keys.join(', ')}]")
           end
 
-          if params[:password].nil? 
+          if params[:password].nil?
             raise InvalidValue.new(:params, "Must supply password for PFX file")
           end
         else
@@ -136,9 +139,9 @@ module Omnibus
         servers = params[:timestamp_servers] || DEFAULT_TIMESTAMP_SERVERS
         @signing_identity_file[:timestamp_servers] = [servers].flatten
         @signing_identity_file[:password] = params[:password] || false
-        end
+      end
 
-        @signing_identity_file
+      @signing_identity_file
     end
     expose :signing_identity_file
 
@@ -163,6 +166,7 @@ module Omnibus
         nil
       end
     end
+
     def algorithm
       if signing_identity
         signing_identity[:algorithm]
@@ -172,14 +176,13 @@ module Omnibus
         nil
       end
     end
-  
 
     #
     # Iterates through available timestamp servers and tries to sign
     # the file with with each server, stopping after the first to succeed.
     # If none succeed, an exception is raised.
     #
-    def sign_package(package_file, is_bundle: false )
+    def sign_package(package_file, is_bundle: false)
       success = false
       safe_package_file = "#{windows_safe_path(package_file)}"
       if is_bundle
@@ -199,9 +202,10 @@ module Omnibus
       end
 
       timestamp_servers.each do |ts|
+        puts "signing with timestamp server: #{ts}"
         success = try_sign(safe_package_file, ts)
 
-        puts "signed" if success
+        puts "signed with timestamp server: #{ts}" if success
 
         break if success
       end
@@ -247,7 +251,7 @@ module Omnibus
                 STDERR
                 ------
                 #{status.stderr}
-                EOH
+          EOH
         end
       end
       status.exitstatus == 0
@@ -260,6 +264,7 @@ module Omnibus
     #
     def certificate_subject
       return "CN=#{project.package_name}" unless signing_identity
+
       store = machine_store? ? "LocalMachine" : "CurrentUser"
       cmd = Array.new.tap do |arr|
         arr << "powershell.exe"
